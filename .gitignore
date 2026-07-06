@@ -1,0 +1,6 @@
+.env
+__pycache__/
+*.pyc
+available_slots*.png
+profiles.py
+.DS_Store
