@@ -74,9 +74,9 @@ Example shape:
 USER_PROFILES = [
     {
         "id": 1,
-        "name": "Main Account",
-        "username": "your_ssdc_username",
-        "password": "your_ssdc_password",
+        "name": "John Doe",
+        "username": "YOUR_USERNAME",
+        "password": "YOUR_PASSWORD",
     },
 ]
 ```
