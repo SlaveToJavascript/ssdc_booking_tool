@@ -801,7 +801,7 @@ def monitor_loop():
                     wait_interval()
                     continue
                 
-                print(f"ℹ️ No slots available. Waiting {MONITORING_INTERVAL}s before retry...")
+                print(f"ℹ️  No slots available. Waiting {MONITORING_INTERVAL}s before retry...")
                 wait_interval()
                 continue
 
@@ -820,7 +820,7 @@ def monitor_loop():
                     time.sleep(5)
                     continue
                 else:
-                    print("ℹ️ No response shown twice; checking availability")
+                    print("ℹ️  No response shown twice; checking availability")
                     no_popup_streak = 0
 
             # Check for CAPTCHA unless the date changed
@@ -874,7 +874,7 @@ def monitor_loop():
                     )
                     all_slots = get_available_slot_links()
                     if not all_slots:
-                        print("⚠️ No selectable slots found.")
+                        print("⚠️  No selectable slots found.")
                         break
 
                     print(f"🎯 Found {len(all_slots)} available slot option(s)")
