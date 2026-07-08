@@ -24,7 +24,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # Select profile (change this ID to switch users)
-SELECTED_PROFILE_ID = 1
+SELECTED_PROFILE_ID = 2
 current_profile = next((p for p in USER_PROFILES if p["id"] == SELECTED_PROFILE_ID), None)
 if current_profile is None:
     raise RuntimeError(f"No USER_PROFILES entry found for SELECTED_PROFILE_ID={SELECTED_PROFILE_ID}")
@@ -344,18 +344,22 @@ def wait_for_captcha_to_clear():
     print("🛑 CAPTCHA detected. Waiting for manual completion...")
     send_telegram_alert("🛑 CAPTCHA detected, resolve manually.")
 
-    alert_count = 1
     last_alert_time = time.time()
 
     while True:
         time.sleep(3)
 
-        # Check for kill command while waiting
+        # Keep Telegram controls responsive while waiting on the challenge.
         result = check_telegram_messages()
         if result == 'kill':
             print("🛑 Stopping automation...")
             driver.quit()
             exit()
+
+        # A pause suppresses CAPTCHA reminders and browser interaction.
+        if is_paused:
+            last_alert_time = time.time()
+            continue
 
         if not is_captcha_present():
             print("✅ CAPTCHA resolved")
@@ -364,7 +368,6 @@ def wait_for_captcha_to_clear():
         # Send repeated alerts every 15 seconds
         if time.time() - last_alert_time > 15:
             send_telegram_alert("🛑 CAPTCHA detected, resolve manually.")
-            alert_count += 1
             last_alert_time = time.time()
 
     print(f"✅ CAPTCHA resolved.")
