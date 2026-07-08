@@ -4,7 +4,7 @@ This project automates the SSDC lesson booking flow with Selenium. It logs in to
 
 FYI: Booking sites may rate-limit or block repeated automated activity, especially if multiple instances are running at the same time.
 
-## What The Script Does
+## What the script does
 
 - Opens the SSDC login webpage in Chrome.
 - Logs in with the configured account profile.
@@ -41,7 +41,7 @@ pip install selenium undetected-chromedriver requests python-dotenv
 
 ## Setup
 
-### 1. Create Your Environment File
+### 1. Create your .env file
 
 Copy the example environment file:
 
@@ -58,7 +58,7 @@ TELEGRAM_CHAT_ID=your_telegram_chat_id_here
 
 Do not commit `.env` to a public repository.
 
-### 2. Create Your Profiles File
+### 2. Create your profiles.py file
 
 Copy the example profiles file:
 
@@ -83,7 +83,7 @@ USER_PROFILES = [
 
 Do not commit `profiles.py` to a public repository.
 
-### 3. Select Which Profile To Use
+### 3. Select which profile to use
 
 Open `camp.py` and set:
 
@@ -93,7 +93,7 @@ SELECTED_PROFILE_ID = 1
 
 The value should match the `id` of the account you want the script to use from `profiles.py`.
 
-## Running The Script
+## Running the script
 
 From the project folder:
 
@@ -103,7 +103,7 @@ python3 camp.py
 
 Chrome should open automatically. If a CAPTCHA or verification screen appears, solve it manually in the browser. The script should continue after the verification is cleared.
 
-## Telegram Commands
+## Telegram commands
 
 The script listens for Telegram commands while it is running:
 
