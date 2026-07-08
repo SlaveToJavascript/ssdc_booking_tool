@@ -30,7 +30,7 @@ if current_profile is None:
     raise RuntimeError(f"No USER_PROFILES entry found for SELECTED_PROFILE_ID={SELECTED_PROFILE_ID}")
 
 # Monitoring interval (seconds)
-MONITORING_INTERVAL = 22
+MONITORING_INTERVAL = 22 # no. of seconds to wait between checks
 EARLIEST_DATE_RESPONSE_WAIT_SECONDS = 6
 SLOT_TABLE_WAIT_SECONDS = 10
 SLOT_SELECTION_SETTLE_SECONDS = 2
@@ -332,7 +332,6 @@ def is_captcha_present():
         turnstile_response = (turnstile_input.get_attribute("value") or "").strip()
 
         if not turnstile_response:
-            print("🔍 CAPTCHA detected")
             return True
     except NoSuchElementException:
         pass
@@ -362,7 +361,6 @@ def wait_for_captcha_to_clear():
             continue
 
         if not is_captcha_present():
-            print("✅ CAPTCHA resolved")
             break
 
         # Send repeated alerts every 15 seconds
@@ -370,7 +368,7 @@ def wait_for_captcha_to_clear():
             send_telegram_alert("🛑 CAPTCHA detected, resolve manually.")
             last_alert_time = time.time()
 
-    print(f"✅ CAPTCHA resolved.")
+    print("✅ CAPTCHA resolved")
 
 # --- Modal handling ---
 
@@ -693,7 +691,6 @@ def monitor_loop():
                 driver.execute_script(
                     "arguments[0].value = arguments[1];", date_input, future_date_str
                 )
-                print(f"📅 Set lesson date to: {future_date_str}")
             except NoSuchElementException:
                 print("⚠️ Could not find lesson date input field")
             
@@ -712,7 +709,7 @@ def monitor_loop():
                 )
                 # Use JavaScript click for instant execution (faster than regular click)
                 driver.execute_script("arguments[0].click();", search_btn)
-                print("👆 Clicked Get Earliest Date")
+                print(f"🔎 Checking earliest date from {future_date_str}")
                 redirect_failures = 0
             except TimeoutException:
                 redirect_failures += 1
@@ -773,7 +770,6 @@ def monitor_loop():
                                 break
 
                             if is_modal_present():
-                                print("ℹ️  No slots available")
                                 modal_appeared = True
                                 no_popup_streak = 0
                                 break
@@ -782,8 +778,6 @@ def monitor_loop():
 
                         time.sleep(0.05)
 
-                    if not date_changed and not modal_appeared:
-                        print("✅ No modal appeared")
                 except Exception as e:
                     print(f"⚠️ Error checking date: {e}")
 
@@ -793,11 +787,10 @@ def monitor_loop():
                     WebDriverWait(driver, EARLIEST_DATE_RESPONSE_WAIT_SECONDS).until(
                         EC.visibility_of_element_located((By.CLASS_NAME, 'modal-dialog'))
                     )
-                    print("ℹ️ No slots available")
                     modal_appeared = True
                     no_popup_streak = 0
                 except TimeoutException:
-                    print("✅ No modal message appeared")
+                    pass
 
             # STEP 5: Handle modal if it appeared
             if modal_appeared:
@@ -808,7 +801,7 @@ def monitor_loop():
                     wait_interval()
                     continue
                 
-                print(f"✅ Modal closed. Waiting {MONITORING_INTERVAL}s before retry...")
+                print(f"ℹ️ No slots available. Waiting {MONITORING_INTERVAL}s before retry...")
                 wait_interval()
                 continue
 
@@ -823,11 +816,11 @@ def monitor_loop():
                 
                 no_popup_streak += 1
                 if no_popup_streak < 2:
-                    print(f"✅ No message shown ({no_popup_streak}/2). Retrying Get Earliest Date in 5s...")
+                    print(f"ℹ️ No response shown ({no_popup_streak}/2). Retrying in 5s...")
                     time.sleep(5)
                     continue
                 else:
-                    print("✅ No message shown twice; checking availability")
+                    print("ℹ️ No response shown twice; checking availability")
                     no_popup_streak = 0
 
             # Check for CAPTCHA unless the date changed
@@ -879,8 +872,6 @@ def monitor_loop():
                             (By.XPATH, "//table[contains(@class, 'main-table') and not(contains(@class, 'clone'))]")
                         )
                     )
-                    print("✅ Availability table loaded")
-
                     all_slots = get_available_slot_links()
                     if not all_slots:
                         print("⚠️ No selectable slots found.")
@@ -900,11 +891,9 @@ def monitor_loop():
                         driver.execute_script("arguments[0].scrollIntoView(true);", slot_table)
                         time.sleep(0.2)
                         slot_table.screenshot(screenshot_path)
-                        print("📸 Screenshot captured")
                     except Exception:
                         try:
                             driver.save_screenshot(screenshot_path)
-                            print("📸 Full-page screenshot captured")
                         except Exception:
                             screenshot_path = None
                             print("⚠️ Screenshot failed")
