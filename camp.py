@@ -538,13 +538,13 @@ def choose_next_slot(slot_links, attempted_slot_timings):
         slot_key = normalize_slot_timing(slot_text)
         candidates.append((slot, slot_text, slot_key))
 
-    for candidate in candidates:
+    for candidate in reversed(candidates):
         if candidate[2] not in attempted_slot_timings:
             return candidate
 
     if len(candidates) == 1:
         print("ℹ️ Only an already-tried slot remains; trying it again.")
-        return candidates[0]
+        return candidates[-1]
 
     return None
 
@@ -886,6 +886,13 @@ def monitor_loop():
                     slot, slot_text, slot_key = selected_slot
                     attempted_slot_timings.add(slot_key)
 
+                    try:
+                        selected_date = driver.find_element(By.ID, "SelectedDate").get_attribute("value").strip()
+                    except Exception:
+                        selected_date = ""
+
+                    slot_description = f"{selected_date}, {slot_text}" if selected_date else slot_text
+
                     screenshot_path = SCREENSHOT_PATH
                     try:
                         driver.execute_script("arguments[0].scrollIntoView(true);", slot_table)
@@ -900,10 +907,10 @@ def monitor_loop():
 
                     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", slot)
                     driver.execute_script("arguments[0].click();", slot)
-                    print(f"✅ Selected slot: {slot_text}")
+                    print(f"✅ Selected slot: {slot_description}")
 
                     if screenshot_path and os.path.exists(screenshot_path):
-                        send_telegram_screenshot(screenshot_path, f"✅ SLOT SELECTED: {slot_text}")
+                        send_telegram_screenshot(screenshot_path, f"✅ SLOT SELECTED: {slot_description}")
                         try:
                             os.remove(screenshot_path)
                         except Exception:
