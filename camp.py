@@ -24,7 +24,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # Select profile (change this ID to switch users)
-SELECTED_PROFILE_ID = 2
+SELECTED_PROFILE_ID = 1
 current_profile = next((p for p in USER_PROFILES if p["id"] == SELECTED_PROFILE_ID), None)
 if current_profile is None:
     raise RuntimeError(f"No USER_PROFILES entry found for SELECTED_PROFILE_ID={SELECTED_PROFILE_ID}")
@@ -250,7 +250,7 @@ def check_telegram_messages():
                     send_telegram_alert(f"Status: {status}\nProfile: {profile_label()}\nInterval: {MONITORING_INTERVAL}s")
                     
     except Exception as e:
-        print(f"⚠️ Error checking Telegram messages: {e}")
+        print(f"⚠️  Error checking Telegram messages: {e}")
     
     return None
 
@@ -709,7 +709,7 @@ def monitor_loop():
                 )
                 # Use JavaScript click for instant execution (faster than regular click)
                 driver.execute_script("arguments[0].click();", search_btn)
-                print(f"🔎 Checking earliest date from {future_date_str}")
+                print(f"🔎 Checking earliest lesson date")
                 redirect_failures = 0
             except TimeoutException:
                 redirect_failures += 1
@@ -816,11 +816,11 @@ def monitor_loop():
                 
                 no_popup_streak += 1
                 if no_popup_streak < 2:
-                    print(f"ℹ️ No response shown ({no_popup_streak}/2). Retrying in 5s...")
+                    print(f"ℹ️  No popup ({no_popup_streak}/2). Retrying in 5s...")
                     time.sleep(5)
                     continue
                 else:
-                    print("ℹ️  No response shown twice; checking availability")
+                    print("ℹ️  No popup twice; checking availability")
                     no_popup_streak = 0
 
             # Check for CAPTCHA unless the date changed
