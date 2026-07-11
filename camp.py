@@ -130,11 +130,13 @@ def stop_keep_awake():
         caffeinate_process = None
 
 # --- Browser setup ---
+CHROME_PROFILE_DIR = "/Users/cindy/ChromeProfiles/ssdc-automation"
+
 def build_chrome_options():
     chrome_options = uc.ChromeOptions()
     chrome_options.add_argument("--start-maximized")
-    chrome_options.add_argument("--incognito")
     chrome_options.add_argument("--disable-background-mode")
+    chrome_options.add_argument(f"--user-data-dir={CHROME_PROFILE_DIR}")
     return chrome_options
 
 def get_chrome_major_version():
