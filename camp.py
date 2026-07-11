@@ -13,6 +13,7 @@ import subprocess
 import platform
 import re
 import random
+import threading
 from profiles import USER_PROFILES
 from dotenv import load_dotenv
 
@@ -37,6 +38,7 @@ SLOT_SELECTION_SETTLE_SECONDS = 2
 MAX_SLOT_RECHECKS = 12
 TELEGRAM_TIMEOUT_SECONDS = 8
 TELEGRAM_PHOTO_TIMEOUT_SECONDS = 15
+CAPTCHA_ALERT_DELETE_SECONDS = 60
 
 SCREENSHOT_PATH = f"available_slots_{current_profile['id']}.png"
 CART_URL = "https://www.ssdcl.com.sg/User/Payment/ReviewItems"
@@ -258,7 +260,7 @@ def check_telegram_messages():
     return None
 
 def send_telegram_alert(message):
-    """Send a text message via Telegram"""
+    """Send a text message via Telegram and return its message id."""
     try:
         response = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
@@ -267,8 +269,36 @@ def send_telegram_alert(message):
         )
         if response.status_code != 200:
             print(f"❌ Telegram failed: {response.status_code} - {response.text}")
+            return None
+        return response.json().get("result", {}).get("message_id")
     except Exception as e:
         print("❌ Telegram send error:", e)
+        return None
+
+def delete_telegram_message(message_id):
+    """Delete a Telegram message sent by this bot."""
+    if not message_id:
+        return
+
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/deleteMessage",
+            data={'chat_id': TELEGRAM_CHAT_ID, 'message_id': message_id},
+            timeout=TELEGRAM_TIMEOUT_SECONDS
+        )
+        if response.status_code != 200:
+            print(f"⚠️ Telegram delete failed: {response.status_code} - {response.text}")
+    except Exception as e:
+        print("⚠️ Telegram delete error:", e)
+
+def send_temporary_telegram_alert(message, delete_after_seconds=CAPTCHA_ALERT_DELETE_SECONDS):
+    """Send a Telegram alert and delete it after a delay."""
+    message_id = send_telegram_alert(message)
+    if message_id:
+        timer = threading.Timer(delete_after_seconds, delete_telegram_message, args=(message_id,))
+        timer.daemon = True
+        timer.start()
+    return message_id
 
 def send_telegram_screenshot(photo_path, caption=None):
     """Send a screenshot via Telegram"""
@@ -344,7 +374,7 @@ def is_captcha_present():
 def wait_for_captcha_to_clear():
     """Wait for the user to resolve CAPTCHA."""
     print("🛑 CAPTCHA detected. Waiting for manual completion...")
-    send_telegram_alert("🛑 CAPTCHA detected, resolve manually.")
+    send_temporary_telegram_alert("🛑 CAPTCHA detected, resolve manually.")
 
     last_alert_time = time.time()
 
@@ -368,7 +398,7 @@ def wait_for_captcha_to_clear():
 
         # Send repeated alerts every 15 seconds
         if time.time() - last_alert_time > 15:
-            send_telegram_alert("🛑 CAPTCHA detected, resolve manually.")
+            send_temporary_telegram_alert("🛑 CAPTCHA detected, resolve manually.")
             last_alert_time = time.time()
 
     print("✅ CAPTCHA resolved")
