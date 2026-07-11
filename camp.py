@@ -121,7 +121,7 @@ def stop_keep_awake():
         try:
             caffeinate_process.terminate()
             caffeinate_process.wait(timeout=5)
-            print("☕ Keep-awake deactivated")
+            print("☕️ Keep-awake deactivated")
         except Exception:
             try:
                 caffeinate_process.kill()
@@ -913,7 +913,7 @@ def monitor_loop():
                     print(f"✅ Selected slot: {slot_description}")
 
                     if screenshot_path and os.path.exists(screenshot_path):
-                        send_telegram_screenshot(screenshot_path, f"✅ SLOT SELECTED: {slot_description}")
+                        send_telegram_screenshot(screenshot_path, f"✅ CLICKED: {slot_description}")
                         try:
                             os.remove(screenshot_path)
                         except Exception:
@@ -927,7 +927,7 @@ def monitor_loop():
                     try:
                         click_check_for_availability()
                     except Exception as e:
-                        print(f"❌ Failed to refresh availability after slot selection: {e}")
+                        print(f"❌ Failed to refresh availability after clicking slot: {e}")
                         break
 
                     if is_captcha_present():
