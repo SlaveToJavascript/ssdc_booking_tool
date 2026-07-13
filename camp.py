@@ -39,8 +39,11 @@ MAX_SLOT_RECHECKS = 12
 TELEGRAM_TIMEOUT_SECONDS = 8
 TELEGRAM_PHOTO_TIMEOUT_SECONDS = 15
 CAPTCHA_ALERT_DELETE_SECONDS = 60
+CAPTCHA_STUCK_RESTART_SECONDS = 180
+PAGE_LOAD_TIMEOUT_SECONDS = 45
 
 SCREENSHOT_PATH = f"available_slots_{current_profile['id']}.png"
+ADD_BOOKING_URL = "https://www.ssdcl.com.sg/User/Booking/AddBooking?bookingType=PL"
 CART_URL = "https://www.ssdcl.com.sg/User/Payment/ReviewItems"
 
 # Pause/Resume state
@@ -179,18 +182,22 @@ def get_chrome_major_version():
 
 chrome_major_version = get_chrome_major_version()
 
-try:
-    if chrome_major_version:
-        print(f"🌐 Starting ChromeDriver for Chrome {chrome_major_version}...")
-        driver = uc.Chrome(options=build_chrome_options(), version_main=chrome_major_version, use_subprocess=True)
-    else:
-        print("⚠️ Chrome version not detected; using ChromeDriver auto-detection...")
-        driver = uc.Chrome(options=build_chrome_options(), use_subprocess=True)
-    print("✅ Automation started")
-except Exception as e:
-    print(f"❌ Failed to start ChromeDriver: {e}")
-    print("Tip: update dependencies with: python3 -m pip install -U undetected-chromedriver selenium")
-    raise
+def start_driver():
+    try:
+        if chrome_major_version:
+            print(f"🌐 Starting ChromeDriver for Chrome {chrome_major_version}...")
+            new_driver = uc.Chrome(options=build_chrome_options(), version_main=chrome_major_version, use_subprocess=True)
+        else:
+            print("⚠️ Chrome version not detected; using ChromeDriver auto-detection...")
+            new_driver = uc.Chrome(options=build_chrome_options(), use_subprocess=True)
+        new_driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT_SECONDS)
+        print("✅ Automation started")
+        return new_driver
+    except Exception as e:
+        print(f"❌ Failed to start ChromeDriver: {e}")
+        raise
+
+driver = start_driver()
 
 # --- Telegram ---
 
@@ -371,12 +378,56 @@ def is_captcha_present():
     
     return False
 
+def is_cloudflare_520_error():
+    """Return True when Cloudflare shows a 520 unknown error page."""
+    try:
+        title = (driver.title or "").lower()
+        body_text = (driver.find_element(By.TAG_NAME, "body").text or "").lower()
+        return (
+            "520" in title
+            or "error code 520" in body_text
+            or "web server is returning an unknown error" in body_text
+        )
+    except Exception:
+        return False
+
+def recover_cloudflare_520_error():
+    """Refresh the page when Cloudflare returns a transient 520 page."""
+    if not is_cloudflare_520_error():
+        return False
+
+    print("🔄 Cloudflare 520 error detected; refreshing page...")
+    try:
+        driver.refresh()
+        time.sleep(3)
+    except Exception as refresh_error:
+        print(f"⚠️ Cloudflare 520 refresh failed: {refresh_error}")
+    return True
+
+def restart_browser_session(reason):
+    """Restart the browser and return to the booking page after a stuck session."""
+    global driver
+
+    print(f"🔄 Restarting browser session: {reason}")
+    send_temporary_telegram_alert(f"🔄 Restarting browser session: {reason}")
+
+    try:
+        driver.quit()
+    except Exception:
+        pass
+
+    driver = start_driver()
+    login_and_continue()
+    go_to_booking_page()
+
 def wait_for_captcha_to_clear():
     """Wait for the user to resolve CAPTCHA."""
     print("🛑 CAPTCHA detected. Waiting for manual completion...")
     send_temporary_telegram_alert("🛑 CAPTCHA detected, resolve manually.")
 
-    last_alert_time = time.time()
+    captcha_wait_started_at = time.time()
+    last_alert_time = captcha_wait_started_at
+    captcha_present_checks = 0
 
     while True:
         time.sleep(3)
@@ -395,6 +446,18 @@ def wait_for_captcha_to_clear():
 
         if not is_captcha_present():
             break
+
+        captcha_present_checks += 1
+        if time.time() - captcha_wait_started_at >= CAPTCHA_STUCK_RESTART_SECONDS:
+            restart_browser_session("CAPTCHA verification stuck")
+            return
+
+        if captcha_present_checks % 3 == 0:
+            try:
+                driver.get(ADD_BOOKING_URL)
+                time.sleep(3)
+            except Exception as redirect_error:
+                print(f"⚠️ Add Booking page redirect failed: {redirect_error}")
 
         # Send repeated alerts every 15 seconds
         if time.time() - last_alert_time > 15:
@@ -610,7 +673,7 @@ def login_and_continue():
         )
     except TimeoutException:
         print("⚠️ Login page elements not detected in time.")
-        send_telegram_alert("⚠️ Login page elements not detected – check manually.")
+        send_temporary_telegram_alert("⚠️ Login page elements not detected – check manually.")
         return
 
     # Handle CAPTCHA if present
@@ -623,7 +686,7 @@ def login_and_continue():
             )
         except TimeoutException:
             print("⚠️ Timed out waiting for login page after CAPTCHA.")
-            send_telegram_alert("⚠️ Timed out waiting for login page after CAPTCHA.")
+            send_temporary_telegram_alert("⚠️ Timed out waiting for login page after CAPTCHA.")
             return
 
         if "/User/Information" in driver.current_url:
@@ -647,14 +710,14 @@ def login_and_continue():
             print("✅ Already logged in")
             return
         print("⚠️ Login fields did not appear in time.")
-        send_telegram_alert("⚠️ Login fields did not appear in time — check manually.")
+        send_temporary_telegram_alert("⚠️ Login fields did not appear in time — check manually.")
         return
     except NoSuchElementException:
         if "/User/Information" in driver.current_url:
             print("✅ Already logged in")
             return
         print("⚠️ Login fields not found.")
-        send_telegram_alert("⚠️ Login fields not found — check manually.")
+        send_temporary_telegram_alert("⚠️ Login fields not found — check manually.")
         return
 
     # Click login button
@@ -666,7 +729,7 @@ def login_and_continue():
         print("🔐 Clicked Login")
     except TimeoutException:
         print("⚠️ Login button not clickable")
-        send_telegram_alert("⚠️ Login button not clickable — check manually.")
+        send_temporary_telegram_alert("⚠️ Login button not clickable — check manually.")
         return
 
     # Wait for successful login
@@ -675,11 +738,11 @@ def login_and_continue():
         print("✅ Logged in successfully")
     except TimeoutException:
         print("⚠️ Login redirect timeout")
-        send_telegram_alert("⚠️ Login redirect timeout — check manually.")
+        send_temporary_telegram_alert("⚠️ Login redirect timeout — check manually.")
 
 def go_to_booking_page():
     """Navigate to the booking page"""
-    driver.get("https://www.ssdcl.com.sg/User/Booking/AddBooking?bookingType=PL")
+    driver.get(ADD_BOOKING_URL)
     print("➡️ Opened booking page")
 
 def wait_interval():
@@ -708,6 +771,9 @@ def monitor_loop():
             continue
             
         try:
+            if recover_cloudflare_520_error():
+                continue
+
             # STEP 1: Set lesson date to last day of 3 months from now
             try:
                 now = datetime.now()
@@ -760,7 +826,7 @@ def monitor_loop():
                     time.sleep(MONITORING_INTERVAL * 3)
                     redirect_failures = 0
                 
-                driver.get("https://www.ssdcl.com.sg/User/Booking/AddBooking?bookingType=PL")
+                driver.get(ADD_BOOKING_URL)
                 time.sleep(3)
                 continue
 
@@ -978,7 +1044,7 @@ def monitor_loop():
                         ensure_modal_is_closed()
                         break
 
-                    send_telegram_alert("⚠️ Could not load availability table.")
+                    send_temporary_telegram_alert("⚠️ Could not load availability table.")
                     break
 
             # Wait before next check
@@ -994,6 +1060,9 @@ def monitor_loop():
             print(f"❗ Unexpected monitoring error: {loop_error}")
             
             try:
+                if recover_cloudflare_520_error():
+                    continue
+
                 # Check for CAPTCHA first
                 if is_captcha_present():
                     print("🔍 CAPTCHA detected during error handling")
