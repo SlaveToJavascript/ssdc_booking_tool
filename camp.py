@@ -627,6 +627,37 @@ def get_available_slot_links():
         "//table[contains(@class, 'main-table') and not(contains(@class, 'clone'))]//td[not(contains(., 'n/a')) and not(contains(@class, 'c-gray'))]//a"
     )
 
+def log_empty_slot_table_diagnostics(slot_table):
+    """Log diagnostics when the availability table loads but no clickable slots are detected."""
+    try:
+        all_links = slot_table.find_elements(By.TAG_NAME, "a")
+        visible_links = [link for link in all_links if link.is_displayed()]
+        cells = slot_table.find_elements(By.TAG_NAME, "td")
+        visible_cell_texts = []
+
+        for cell in cells:
+            cell_text = normalize_slot_timing(cell.text)
+            if cell_text and cell_text not in visible_cell_texts:
+                visible_cell_texts.append(cell_text)
+            if len(visible_cell_texts) >= 12:
+                break
+
+        table_class = slot_table.get_attribute("class") or ""
+        table_text = re.sub(r"\s+", " ", slot_table.text or "").strip()
+        table_preview = table_text[:300] if table_text else "(empty)"
+
+        print(
+            f"⚠️ No selectable slots found. "
+            f"table_links={len(all_links)}, visible_links={len(visible_links)}, "
+            f"cells={len(cells)}, table_class='{table_class}'"
+        )
+        print(f"🔎 Availability table text preview: {table_preview}")
+        if visible_cell_texts:
+            print(f"🔎 Sample cell text: {visible_cell_texts}")
+        print(f"🔎 Current URL: {driver.current_url}")
+    except Exception as diagnostic_error:
+        print(f"⚠️ Could not log availability table diagnostics: {diagnostic_error}")
+
 def choose_next_slot(slot_links, attempted_slot_timings):
     candidates = []
     for index, slot in enumerate(slot_links, start=1):
@@ -973,7 +1004,7 @@ def monitor_loop():
                     )
                     all_slots = get_available_slot_links()
                     if not all_slots:
-                        print("⚠️  No selectable slots found.")
+                        log_empty_slot_table_diagnostics(slot_table)
                         break
 
                     print(f"🎯 Found {len(all_slots)} available slot option(s)")
