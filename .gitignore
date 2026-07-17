@@ -4,3 +4,4 @@ __pycache__/
 available_slots*.png
 profiles.py
 .DS_Store
+availabilities.json

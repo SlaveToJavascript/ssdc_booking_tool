@@ -16,6 +16,11 @@ import random
 import threading
 from profiles import USER_PROFILES
 from dotenv import load_dotenv
+from availability import (
+    add_availability_from_command,
+    list_availabilities,
+    remove_availability_from_command,
+)
 
 # --- Configuration ---
 load_dotenv()
@@ -39,7 +44,7 @@ MAX_SLOT_RECHECKS = 12
 TELEGRAM_TIMEOUT_SECONDS = 8
 TELEGRAM_PHOTO_TIMEOUT_SECONDS = 15
 CAPTCHA_ALERT_DELETE_SECONDS = 60
-CAPTCHA_STUCK_RESTART_SECONDS = 180
+CAPTCHA_STUCK_RESTART_SECONDS = 90
 PAGE_LOAD_TIMEOUT_SECONDS = 45
 
 SCREENSHOT_PATH = f"available_slots_{current_profile['id']}.png"
@@ -135,33 +140,41 @@ def stop_keep_awake():
         caffeinate_process = None
 
 # --- Browser setup ---
-CHROME_PROFILE_DIR = os.getenv("CHROME_PROFILE_DIR") # TODO: use own chrome profile directory
+CHROME_CANARY_BINARY = "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary"
+CHROME_PROFILE_DIR = os.getenv("CHROME_PROFILE_DIR")
+
 
 def build_chrome_options():
     chrome_options = uc.ChromeOptions()
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--disable-background-mode")
+    if os.path.exists(CHROME_CANARY_BINARY):
+        chrome_options.binary_location = CHROME_CANARY_BINARY
     if CHROME_PROFILE_DIR:
         chrome_options.add_argument(f"--user-data-dir={CHROME_PROFILE_DIR}")
     return chrome_options
 
+
 def get_chrome_major_version():
-    """Return the installed Chrome major version, e.g. 148 from 148.0.x."""
+    """Return the installed Chrome/Canary major version, e.g. 148 from 148.0.x."""
     system = platform.system()
     commands = []
 
     if system == "Darwin":
         commands = [
+            [CHROME_CANARY_BINARY, "--version"],
             ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "--version"],
             ["/Applications/Google Chrome Beta.app/Contents/MacOS/Google Chrome Beta", "--version"],
         ]
     elif system == "Windows":
         commands = [
+            ["reg", "query", r"HKEY_CURRENT_USER\Software\Google\Chrome SxS\BLBeacon", "/v", "version"],
             ["reg", "query", r"HKEY_CURRENT_USER\Software\Google\Chrome\BLBeacon", "/v", "version"],
             ["reg", "query", r"HKEY_LOCAL_MACHINE\Software\Google\Chrome\BLBeacon", "/v", "version"],
         ]
     else:
         commands = [
+            ["google-chrome-unstable", "--version"],
             ["google-chrome", "--version"],
             ["google-chrome-stable", "--version"],
             ["chromium-browser", "--version"],
@@ -184,11 +197,12 @@ chrome_major_version = get_chrome_major_version()
 
 def start_driver():
     try:
+        browser_name = "Chrome Canary" if os.path.exists(CHROME_CANARY_BINARY) else "Chrome"
         if chrome_major_version:
-            print(f"🌐 Starting ChromeDriver for Chrome {chrome_major_version}...")
+            print(f"🌐 Starting ChromeDriver for {browser_name} {chrome_major_version}...")
             new_driver = uc.Chrome(options=build_chrome_options(), version_main=chrome_major_version, use_subprocess=True)
         else:
-            print("⚠️ Chrome version not detected; using ChromeDriver auto-detection...")
+            print(f"⚠️ {browser_name} version not detected; using ChromeDriver auto-detection...")
             new_driver = uc.Chrome(options=build_chrome_options(), use_subprocess=True)
         new_driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT_SECONDS)
         print("✅ Automation started")
@@ -233,7 +247,8 @@ def check_telegram_messages():
                     continue
                 
                 message = update.get('message', {})
-                text = message.get('text', '').strip().lower()
+                text_raw = message.get('text', '').strip()
+                text = text_raw.lower()
                 last_update_id = update_id
                 
                 if text in ['/kill', '/stop', '/quit']:
@@ -244,10 +259,10 @@ def check_telegram_messages():
                 elif text == '/pause':
                     if not is_paused:
                         is_paused = True
-                        print("⏸️ Pause command received")
-                        send_telegram_alert("⏸️ Automation paused. Send /resume to continue.")
+                        print("⏸️  Pause command received")
+                        send_telegram_alert("⏸️  Automation paused. Send /resume to continue.")
                     else:
-                        send_telegram_alert("⏸️ Automation is already paused. Send /resume to continue.")
+                        send_telegram_alert("⏸️  Automation is already paused. Send /resume to continue.")
                 
                 elif text == '/resume':
                     if is_paused:
@@ -257,7 +272,16 @@ def check_telegram_messages():
                     else:
                         send_telegram_alert("▶️ Automation is already running. Send /pause to pause.")
                 
-                elif text == '/status':
+                elif text.startswith("/add ") or text.startswith("/add_availability "):
+                    send_telegram_alert(add_availability_from_command(text_raw))
+
+                elif text.startswith("/remove ") or text.startswith("/remove_availability "):
+                    send_telegram_alert(remove_availability_from_command(text_raw))
+
+                elif text == "/list_availabilities" or text == "list_availability":
+                    send_telegram_alert(list_availabilities())
+
+                elif text == "/status":
                     status = "⏸️ PAUSED" if is_paused else "▶️ RUNNING"
                     send_telegram_alert(f"Status: {status}\nProfile: {profile_label()}\nInterval: {MONITORING_INTERVAL}s")
                     
@@ -422,7 +446,7 @@ def restart_browser_session(reason):
 
 def wait_for_captcha_to_clear():
     """Wait for the user to resolve CAPTCHA."""
-    print("🛑 CAPTCHA detected. Waiting for manual completion...")
+    print("🛑 CAPTCHA detected. Waiting for manual resolution...")
     send_temporary_telegram_alert("🛑 CAPTCHA detected, resolve manually.")
 
     captcha_wait_started_at = time.time()
@@ -457,7 +481,7 @@ def wait_for_captcha_to_clear():
                 driver.get(ADD_BOOKING_URL)
                 time.sleep(3)
             except Exception as redirect_error:
-                print(f"⚠️ Add Booking page redirect failed: {redirect_error}")
+                print(f"⚠️  Add Booking page redirect failed: {redirect_error}")
 
         # Send repeated alerts every 15 seconds
         if time.time() - last_alert_time > 15:
@@ -628,35 +652,8 @@ def get_available_slot_links():
     )
 
 def log_empty_slot_table_diagnostics(slot_table):
-    """Log diagnostics when the availability table loads but no clickable slots are detected."""
-    try:
-        all_links = slot_table.find_elements(By.TAG_NAME, "a")
-        visible_links = [link for link in all_links if link.is_displayed()]
-        cells = slot_table.find_elements(By.TAG_NAME, "td")
-        visible_cell_texts = []
-
-        for cell in cells:
-            cell_text = normalize_slot_timing(cell.text)
-            if cell_text and cell_text not in visible_cell_texts:
-                visible_cell_texts.append(cell_text)
-            if len(visible_cell_texts) >= 12:
-                break
-
-        table_class = slot_table.get_attribute("class") or ""
-        table_text = re.sub(r"\s+", " ", slot_table.text or "").strip()
-        table_preview = table_text[:300] if table_text else "(empty)"
-
-        print(
-            f"⚠️ No selectable slots found. "
-            f"table_links={len(all_links)}, visible_links={len(visible_links)}, "
-            f"cells={len(cells)}, table_class='{table_class}'"
-        )
-        print(f"🔎 Availability table text preview: {table_preview}")
-        if visible_cell_texts:
-            print(f"🔎 Sample cell text: {visible_cell_texts}")
-        print(f"🔎 Current URL: {driver.current_url}")
-    except Exception as diagnostic_error:
-        print(f"⚠️ Could not log availability table diagnostics: {diagnostic_error}")
+    """Log when the availability table loads but no clickable slots are detected."""
+    print("⚠️  No selectable slots found.")
 
 def choose_next_slot(slot_links, attempted_slot_timings):
     candidates = []
@@ -774,7 +771,7 @@ def login_and_continue():
 def go_to_booking_page():
     """Navigate to the booking page"""
     driver.get(ADD_BOOKING_URL)
-    print("➡️ Opened booking page")
+    print("➡️  Opened booking page")
 
 def wait_interval():
     time.sleep(random.uniform(MONITORING_INTERVAL * 0.8, MONITORING_INTERVAL * 1.3))
@@ -822,7 +819,7 @@ def monitor_loop():
                     "arguments[0].value = arguments[1];", date_input, future_date_str
                 )
             except NoSuchElementException:
-                print("⚠️ Could not find lesson date input field")
+                print("⚠️  Could not find lesson date input field")
             
             # STEP 2: Store the date as baseline for change detection
             original_date = None
@@ -830,7 +827,7 @@ def monitor_loop():
                 date_input = driver.find_element(By.ID, 'SelectedDate')
                 original_date = date_input.get_attribute('value')
             except NoSuchElementException:
-                print("⚠️ Could not read lesson date")
+                print("⚠️  Could not read lesson date")
             
             # Click Get Earliest Date
             try:
