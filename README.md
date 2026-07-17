@@ -1,4 +1,4 @@
-# SSDC Lesson Booking Tool
+# SSDC Lesson Booking Tool (W.I.P.)
 
 This project automates the SSDC lesson booking flow with Selenium. It logs in to SSDC, looks for available slots for all lesson dates, adds available slots to cart, and sends Telegram alerts when manual action or booking attention is needed.
 
